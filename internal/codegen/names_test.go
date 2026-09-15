@@ -110,3 +110,56 @@ func TestIsStdlib(t *testing.T) {
 		}
 	}
 }
+
+func TestSimpleNamedType(t *testing.T) {
+	dataPkg := types.NewPackage("example.com/internal/data", "data")
+	data := types.NewNamed(types.NewTypeName(0, dataPkg, "Data", nil), types.NewStruct(nil, nil), nil)
+
+	if got := simpleNamedType(data); got != data {
+		t.Error("simpleNamedType(Data) did not return the named type")
+	}
+	if got := simpleNamedType(types.NewPointer(data)); got != data {
+		t.Error("simpleNamedType(*Data) did not unwrap the pointer")
+	}
+	// Generic instantiations keep their type-argument prefix and are excluded.
+	generic := types.NewNamed(types.NewTypeName(0, dataPkg, "Repo", nil), types.NewStruct(nil, nil), nil)
+	generic.SetTypeParams([]*types.TypeParam{
+		types.NewTypeParam(types.NewTypeName(0, dataPkg, "T", nil), types.NewInterfaceType(nil, nil)),
+	})
+	inst, err := types.Instantiate(nil, generic, []types.Type{types.Typ[types.String]}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := simpleNamedType(inst); got != nil {
+		t.Errorf("simpleNamedType(Repo[string]) = %v, want nil", got)
+	}
+	// Non-named types have no package-qualified form.
+	if got := simpleNamedType(types.Typ[types.String]); got != nil {
+		t.Errorf("simpleNamedType(string) = %v, want nil", got)
+	}
+}
+
+func TestNamerAllocPreferred(t *testing.T) {
+	n := newNamer()
+	// The plain name is free: use it.
+	if got := n.allocPreferred("data", "dataData"); got != "data" {
+		t.Fatalf("first allocPreferred = %q, want data", got)
+	}
+	// The plain name is taken by an alias: fall back to the qualified name
+	// rather than a bare numeric suffix.
+	if got := n.allocPreferred("data", "dataData"); got != "dataData" {
+		t.Fatalf("second allocPreferred = %q, want dataData", got)
+	}
+	// Both taken: numeric suffix.
+	if got := n.allocPreferred("data", "dataData"); got != "data2" {
+		t.Fatalf("third allocPreferred = %q, want data2", got)
+	}
+	// A duplicate fallback must not shadow the base.
+	n2 := newNamer()
+	if got := n2.allocPreferred("db", "db"); got != "db" {
+		t.Fatalf("allocPreferred(db, db) = %q, want db", got)
+	}
+	if got := n2.allocPreferred("db", "db"); got != "db2" {
+		t.Fatalf("allocPreferred(db, db) second = %q, want db2", got)
+	}
+}

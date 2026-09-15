@@ -500,12 +500,48 @@ func (w *graphWriter) ref(p *model.Provider) string {
 	return name
 }
 
+// alloc names the variable that holds the result of p. The plain type-derived
+// name is preferred; when it is already taken, a package-qualified name is tried
+// before falling back to numeric suffixes.
 func (w *graphWriter) alloc(p *model.Provider) string {
 	base := typeVarName(p.Output)
 	if base == "" {
-		base = identFromProvider(p.Name)
+		return w.names.alloc(identFromProvider(p.Name))
+	}
+	if alt, ok := w.qualifiedName(p.Output, base); ok {
+		return w.names.allocPreferred(base, alt)
 	}
 	return w.names.alloc(base)
+}
+
+// qualifiedName returns pkgName+TypeName for a non-generic named type whose
+// plain name is already spoken for by something other than a sibling value: the
+// import alias when a type is named after its package (data.Data wants to be
+// called data, but data is an import), or the generated function itself
+// (cmd.MainApp inside func mainApp). Both cases have a clearer candidate than a
+// bare numeric suffix.
+//
+// Types that already carry a type-argument prefix (Repository[User] ->
+// userRepository) stay readable with a numeric suffix, and for types from
+// packages that merely share a name a package prefix would be misleading, so
+// neither gets a fallback.
+func (w *graphWriter) qualifiedName(t types.Type, base string) (string, bool) {
+	named := simpleNamedType(t)
+	if named == nil {
+		return "", false
+	}
+	obj := named.Obj()
+	if obj.Pkg() == nil {
+		return "", false
+	}
+	if base != lowerFirst(obj.Pkg().Name()) && base != w.g.Name {
+		return "", false
+	}
+	// Base the name on the package's own name rather than on the file's import
+	// alias: choosing a variable name must not register an import. Registering
+	// one here would emit an unused import whenever the plain name turned out
+	// to be free, and would make generated names depend on provider order.
+	return lowerFirst(obj.Pkg().Name()) + upperFirst(obj.Name()), true
 }
 
 // --- expression printing for loom.Supply -----------------------------------
@@ -655,18 +691,46 @@ func (n *namer) reserve(names ...string) {
 }
 
 func (n *namer) alloc(base string) string {
-	if !validIdent(base) {
-		base = "value"
-	}
-	if types.Universe.Lookup(base) != nil {
-		base += "Value"
-	}
+	base = n.normalize(base)
 	name := base
 	for i := 2; n.used[name]; i++ {
 		name = base + strconv.Itoa(i)
 	}
 	n.used[name] = true
 	return name
+}
+
+// allocPreferred returns base when it is free, otherwise alt, and only then
+// falls back to numeric suffixes.
+//
+// Numeric suffixes make poor variable names, so a type whose plain name is
+// already taken by an import alias or an earlier variable gets a second, more
+// explicit candidate first: data.Data becomes dataData rather than data2, and
+// cmd.MainApp inside func mainApp becomes cmdMainApp rather than mainApp2.
+func (n *namer) allocPreferred(base, alt string) string {
+	base = n.normalize(base)
+	alt = n.normalize(alt)
+	switch {
+	case !n.used[base]:
+		n.used[base] = true
+		return base
+	case alt != base && !n.used[alt]:
+		n.used[alt] = true
+		return alt
+	default:
+		return n.alloc(base)
+	}
+}
+
+// normalize makes a candidate usable as an unqualified Go identifier.
+func (n *namer) normalize(base string) string {
+	if !validIdent(base) {
+		base = "value"
+	}
+	if types.Universe.Lookup(base) != nil {
+		base += "Value"
+	}
+	return base
 }
 
 func reservedIdent(name string) bool {
@@ -727,6 +791,28 @@ func typeBaseName(t types.Type) string {
 		return lowerFirst(u.Name())
 	}
 	return ""
+}
+
+// simpleNamedType returns the named type behind t when t is a non-generic named
+// type or a pointer to one, and nil otherwise.
+func simpleNamedType(t types.Type) *types.Named {
+	named := namedType(t)
+	if named == nil || named.TypeArgs().Len() > 0 {
+		return nil
+	}
+	return named
+}
+
+// namedType unwraps aliases and pointers to reach the underlying named type.
+func namedType(t types.Type) *types.Named {
+	t = types.Unalias(t)
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(ptr.Elem())
+	}
+	if named, ok := t.(*types.Named); ok {
+		return named
+	}
+	return nil
 }
 
 // identFromProvider turns a constructor name into a variable base name by

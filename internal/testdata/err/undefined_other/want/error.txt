@@ -1,0 +1,2 @@
+loom: packages do not type-check:
+	internal/testdata/err/undefined_other/app.go:17:6: undefined: misspelledName

@@ -268,6 +268,31 @@ func InitApp(ctx context.Context) (*App, *loom.Lifecycle, error)
 Generated code is written to `loom_gen.go`, gofmt-formatted, and only rewritten
 when its content actually changes.
 
+### Bootstrapping and regeneration
+
+Loom has no stub file, so on a first run the initializer does not exist yet and
+every call site of it is reported by the type checker as `undefined`. That is
+expected, not an error: `loom generate` tolerates `undefined: InitApp` for the
+exact function names it is about to create, so you can write the graph and its
+call site in the same commit. Any other error is still reported.
+
+Generation is all-or-nothing: every package is resolved and rendered before
+anything is written, so a diagnostic in one package cannot leave others
+half-generated. If the graph is valid but a symbol is out of date in a way the
+type checker cannot see, the generated call site fails to compile, which is the
+backstop.
+
+Variables are named after the type they hold (`Repository[User]` becomes
+`userRepository`). When that name is already spoken for, Loom prefers an
+explicit package-qualified name over a numeric suffix, in these cases:
+
+| Provider result | Name | Why |
+| --- | --- | --- |
+| `*user.Repository` | `userRepository` | free |
+| `*data.Data` | `dataData` | `data` is the package's own import alias |
+| `*cmd.MainApp`, graph named `mainApp` | `cmdMainApp` | `mainApp` is the function itself |
+| `Repository[User]` twice | `userRepository2` | already descriptive; suffix is enough |
+
 ## CLI
 
 ```

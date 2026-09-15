@@ -48,9 +48,38 @@ type GraphPlan struct {
 
 // session holds the shared loading, parsing, and codegen configuration.
 type session struct {
-	ld       *load.Loader
-	parser   *parse.Parser
-	fileOpts codegen.Options
+	ld        *load.Loader
+	parser    *parse.Parser
+	fileOpts  codegen.Options
+	generated *load.Generated
+}
+
+// unit pairs a root package with the graphs declared in it.
+type unit struct {
+	pkg    *packages.Package
+	graphs []*model.Graph
+}
+
+// collect parses every root package and records the functions Loom is about to
+// generate.
+//
+// It must run before Loader.CheckErrors: the initializer does not exist until
+// the generated file is written, so on a first run its call sites are reported
+// as undefined and would otherwise look like broken input.
+func (s *session) collect() ([]unit, error) {
+	s.generated = load.NewGenerated()
+	units := make([]unit, 0, len(s.ld.Roots))
+	for _, root := range s.ld.Roots {
+		graphs, err := s.parser.Package(root)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range graphs {
+			s.generated.Add(root, g.Name)
+		}
+		units = append(units, unit{pkg: root, graphs: graphs})
+	}
+	return units, nil
 }
 
 func open(opts Options) (*session, error) {
@@ -85,13 +114,16 @@ func Inspect(opts Options) ([]GraphPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	units, err := s.collect()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ld.CheckErrors(s.generated); err != nil {
+		return nil, err
+	}
 	var out []GraphPlan
-	for _, root := range s.ld.Roots {
-		graphs, err := s.parser.Package(root)
-		if err != nil {
-			return nil, err
-		}
-		for _, g := range graphs {
+	for _, u := range units {
+		for _, g := range u.graphs {
 			plan, err := resolve.Build(g, s.parser.LifecycleType(), s.parser.ContextType(), baseDir(opts.Dir))
 			if err != nil {
 				return nil, err
@@ -108,64 +140,94 @@ func Run(opts Options) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	units, err := s.collect()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ld.CheckErrors(s.generated); err != nil {
+		return nil, err
+	}
 
-	var results []Result
-	for _, root := range s.ld.Roots {
-		graphs, err := s.parser.Package(root)
+	// Render every package before writing any of it, so that a diagnostic in one
+	// package cannot leave the others half-generated.
+	base := baseDir(opts.Dir)
+	results := make([]Result, 0, len(units))
+	for _, u := range units {
+		res, err := s.render(u, base)
 		if err != nil {
 			return nil, err
 		}
-		if len(graphs) == 0 {
-			continue
+		if res != nil {
+			results = append(results, *res)
 		}
-		dir, err := packageDir(root)
-		if err != nil {
+	}
+	for i := range results {
+		if err := commit(&results[i], opts.DryRun); err != nil {
 			return nil, err
 		}
-
-		if err := checkNames(root, graphs, baseDir(opts.Dir)); err != nil {
-			return nil, err
-		}
-
-		file := codegen.NewFile(root, s.fileOpts, "")
-		var names []string
-		for _, g := range graphs {
-			plan, err := resolve.Build(g, s.parser.LifecycleType(), s.parser.ContextType(), baseDir(opts.Dir))
-			if err != nil {
-				return nil, err
-			}
-			if err := file.AddGraph(g, plan); err != nil {
-				return nil, err
-			}
-			names = append(names, g.Name)
-		}
-		src, err := file.Bytes()
-		if err != nil {
-			return nil, err
-		}
-
-		out := filepath.Join(dir, generatedFile)
-		res := Result{Package: root.PkgPath, File: out, Graphs: names, Source: src}
-		existing, readErr := os.ReadFile(out)
-		switch {
-		case readErr == nil && bytes.Equal(existing, src):
-			// Already up to date: do not touch the file, so mtimes, IDE
-			// reloads, and git status stay quiet.
-		case opts.DryRun:
-			res.Changed = true
-		default:
-			if err := os.WriteFile(out, src, 0o644); err != nil {
-				return nil, fmt.Errorf("loom: writing %s: %w", out, err)
-			}
-			res.Changed = true
-		}
-		results = append(results, res)
 	}
 	return results, nil
 }
 
-// generatedFile is the base name of the file loom writes.
-const generatedFile = "loom_gen.go"
+// render resolves every graph declared in u and produces the file to write. It
+// returns nil when the package declares no graphs.
+func (s *session) render(u unit, base string) (*Result, error) {
+	root, graphs := u.pkg, u.graphs
+	if len(graphs) == 0 {
+		return nil, nil
+	}
+	dir, err := packageDir(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkNames(root, graphs, base); err != nil {
+		return nil, err
+	}
+
+	file := codegen.NewFile(root, s.fileOpts, "")
+	names := make([]string, 0, len(graphs))
+	for _, g := range graphs {
+		plan, err := resolve.Build(g, s.parser.LifecycleType(), s.parser.ContextType(), base)
+		if err != nil {
+			return nil, err
+		}
+		if err := file.AddGraph(g, plan); err != nil {
+			return nil, err
+		}
+		names = append(names, g.Name)
+	}
+	src, err := file.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	return &Result{
+		Package: root.PkgPath,
+		File:    filepath.Join(dir, load.GeneratedFile),
+		Graphs:  names,
+		Source:  src,
+	}, nil
+}
+
+// commit writes res unless the file already has exactly that content, and
+// records whether anything changed.
+func commit(res *Result, dryRun bool) error {
+	existing, readErr := os.ReadFile(res.File)
+	switch {
+	case readErr == nil && bytes.Equal(existing, res.Source):
+		// Already up to date: do not touch the file, so mtimes, IDE reloads, and
+		// git status stay quiet.
+		return nil
+	case dryRun:
+		res.Changed = true
+		return nil
+	default:
+		if err := os.WriteFile(res.File, res.Source, 0o644); err != nil {
+			return fmt.Errorf("loom: writing %s: %w", res.File, err)
+		}
+		res.Changed = true
+		return nil
+	}
+}
 
 // checkNames rejects two graphs that would generate the same function, and
 // graphs whose generated name collides with a hand-written declaration.
@@ -191,7 +253,7 @@ func checkNames(pkg *packages.Package, graphs []*model.Graph, base string) error
 			continue
 		}
 		pos := pkg.Fset.Position(obj.Pos())
-		if strings.HasSuffix(pos.Filename, generatedFile) {
+		if strings.HasSuffix(pos.Filename, load.GeneratedFile) {
 			continue // our own output from a previous run
 		}
 		return &diag.Error{

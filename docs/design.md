@@ -249,11 +249,43 @@ cycle、duplicate 同理，均带路径与源码位置。
 - 通过 `go/packages` 加载（`NeedTypes|NeedTypesInfo|NeedSyntax|NeedDeps|NeedImports`），
   build tags 交给 go 工具链。
 - 输出 `loom_gen.go`；先构造 import 管理表与变量名分配表，再文本生成，最后 `go/format`。
-- 变量名从类型推导：`*Config → config`、`Repository[User] → userRepository`，
-  冲突加数字后缀；保留字与 import 别名预占。
+- 变量名从类型推导：`*Config → config`、`Repository[User] → userRepository`。
+  冲突时**优先包名前缀而非数字后缀**，但仅限两种确实更差的情况：
+  `data.Data → dataData`（`data` 被 import 别名占用）、
+  `cmd.MainApp → cmdMainApp`（`mainApp` 就是生成本身）。
+  已经带类型参数前缀的名字（`Repository[User] → userRepository`）用数字后缀即可；
+  同名包（`a/model` 与 `b/model`）加包名前缀反而误导，因此也不加。
+  保留字与 import 别名预占。
 - import alias 冲突用数字后缀，排序确定。
+- **先全部渲染再统一落盘**：任一包报错都不会留下写了一半的仓库。
 - 生成结果与已有文件**字节相同则不写盘**（保护 mtime / IDE / git）。
 - 同一输入必须字节级确定。
+
+### 7.1 首次生成（bootstrap）
+
+Loom 刻意不生成/不要求 stub 文件（见 §1.1、§1.2）。代价是：**第一次生成时
+被生成的函数还不存在**，所有 call site 都会被类型检查器报 `undefined: InitApp`。
+如果 Loom 因此拒绝运行，那么“写 graph → 写调用点 → generate”这个最自然的流程
+在首次生成时必然卡死，项目无法落地。
+
+因此 `internal/load` 提供 `Generated`：记录本次将要生成的函数名（按包路径与包名
+两份索引），`CheckErrors` 只忽略形如 `undefined: InitApp` / `undefined: pkg.InitApp`
+且**确实命中本次生成集合**的错误。其余类型错误（拼写错误、真实缺失的符号）
+一律照常报出。
+
+效果：
+
+- 新建 graph、新写调用点、从别的 DI 框架迁移，都可以一次成功。
+- `undefined: InitAp`（拼写错误）仍然报错，不会被静默吞掉。
+- 生成后由编译器兜底：生成的调用点类型不匹配就编译失败。
+
+同理，`loom_gen.go` **完全属于 loom**，整体重写，因此该文件内部的类型错误也一律
+忽略：constructor 签名变了、或新版本 loom 改了 import 集合，都会让上一次的生成
+结果编译不过。如果这类错误阻止重新生成，就形成了一个无法自愈的死锁。
+（`Generated.ignoresStaleFile`）
+
+真实迁移中这两个问题都会遇到：把 `wire_gen.go` 换成 graph 后，第一次 `loom generate`
+必然面对“调用点已存在但函数未生成”；而第 2 次又可能面对“上一次生成的文件已过时”。
 
 ## 8. 为什么没有 runtime container
 
