@@ -1,0 +1,132 @@
+package gen_test
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Xwudao/loom/internal/gen"
+)
+
+// repoRoot is the module root, two directories above this test package.
+func repoRoot(t testing.TB) string {
+	t.Helper()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return string(b)
+}
+
+func subdirs(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", dir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// TestGoldenGenerate compares generated source against checked-in golden files.
+func TestGoldenGenerate(t *testing.T) {
+	root := repoRoot(t)
+	base := filepath.Join(root, "internal/testdata/gen")
+	for _, name := range subdirs(t, base) {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			pattern := "./" + filepath.ToSlash(filepath.Join("internal/testdata/gen", name))
+			results, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}, DryRun: true})
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			if len(results) != 1 {
+				t.Fatalf("got %d results, want 1", len(results))
+			}
+			want := readFile(t, filepath.Join(base, name, "want", "loom_gen.go"))
+			if got := string(results[0].Source); got != want {
+				t.Errorf("generated source differs from golden file\n--- got ---\n%s\n--- want ---\n%s", got, want)
+			}
+			// Generation must be deterministic.
+			again, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}, DryRun: true})
+			if err != nil {
+				t.Fatalf("second generate: %v", err)
+			}
+			if string(again[0].Source) != string(results[0].Source) {
+				t.Error("generation is not deterministic")
+			}
+		})
+	}
+}
+
+// TestGoldenErrors compares diagnostics against checked-in golden files.
+func TestGoldenErrors(t *testing.T) {
+	root := repoRoot(t)
+	base := filepath.Join(root, "internal/testdata/err")
+	for _, name := range subdirs(t, base) {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			pattern := "./" + filepath.ToSlash(filepath.Join("internal/testdata/err", name))
+			_, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}, DryRun: true})
+			if err == nil {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			want := readFile(t, filepath.Join(base, name, "want", "error.txt"))
+			got := strings.TrimRight(err.Error(), "\n") + "\n"
+			if got != want {
+				t.Errorf("diagnostic differs from golden file\n--- got ---\n%s\n--- want ---\n%s", got, want)
+			}
+		})
+	}
+}
+
+// TestGeneratedCompiles writes generated files for the golden cases and builds
+// them, proving that generated code actually compiles (including import
+// aliases and cross-package references).
+func TestGeneratedCompiles(t *testing.T) {
+	root := repoRoot(t)
+	base := filepath.Join(root, "internal/testdata/gen")
+	names := subdirs(t, base)
+
+	var patterns []string
+	var generated []string
+	for _, name := range names {
+		pattern := "./" + filepath.ToSlash(filepath.Join("internal/testdata/gen", name))
+		patterns = append(patterns, pattern)
+		if _, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}}); err != nil {
+			t.Fatalf("generate %s: %v", name, err)
+		}
+		generated = append(generated, filepath.Join(base, name, "loom_gen.go"))
+	}
+	t.Cleanup(func() {
+		for _, path := range generated {
+			os.Remove(path)
+		}
+	})
+
+	for _, pattern := range patterns {
+		cmd := exec.Command("go", "build", pattern)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("go build %s failed: %v\n%s", pattern, err, out)
+		}
+	}
+}

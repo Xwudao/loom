@@ -1,0 +1,13 @@
+loom: cannot build *App
+
+dependency path:
+    *App
+      -> *DB
+      -> context.Context  (missing)
+
+providers:
+    internal/testdata/err/context_hint/app.go:19:6  NewApp(*DB)
+    internal/testdata/err/context_hint/app.go:16:6  NewDB(context.Context)
+
+hint:
+    add loom.WithContext() to the graph to inject context.Context

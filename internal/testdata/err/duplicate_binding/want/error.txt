@@ -1,0 +1,4 @@
+loom: multiple providers found for Store
+providers:
+    internal/testdata/err/duplicate_binding/app.go:36:17  NewStoreA()
+    internal/testdata/err/duplicate_binding/app.go:37:17  NewStoreB()

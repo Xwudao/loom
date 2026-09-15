@@ -1,0 +1,3 @@
+loom: provider NewLifecycle provides *loom.Lifecycle, which loom owns and cannot be provided
+at:
+    internal/testdata/err/lifecycle_provided/app.go:16:15

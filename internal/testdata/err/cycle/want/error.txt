@@ -1,0 +1,13 @@
+loom: dependency cycle detected
+
+dependency path:
+    *A
+      -> *B
+      -> *C
+      -> *A  (cycle)
+
+providers:
+    internal/testdata/err/cycle/cycle.go:9:6   NewA(*B)
+    internal/testdata/err/cycle/cycle.go:10:6  NewB(*C)
+    internal/testdata/err/cycle/cycle.go:11:6  NewC(*A)
+    internal/testdata/err/cycle/cycle.go:9:6   NewA(*B)

@@ -1,0 +1,8 @@
+# OS
+.DS_Store
+
+# Go build and test artifacts
+*.test
+*.out
+/bin/
+/dist/

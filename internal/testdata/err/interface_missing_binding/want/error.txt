@@ -1,0 +1,13 @@
+loom: cannot build *App
+
+dependency path:
+    *App
+      -> *Service
+      -> Store  (missing)
+
+providers:
+    internal/testdata/err/interface_missing_binding/app.go:28:6  NewApp(*Service)
+    internal/testdata/err/interface_missing_binding/app.go:22:6  NewService(Store)
+
+hint:
+    provider NewUserStore returns *userStore, which implements Store; bind it with loom.As[Store](NewUserStore)

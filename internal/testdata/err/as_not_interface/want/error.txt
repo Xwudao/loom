@@ -1,0 +1,3 @@
+loom: loom.As[Thing]: type argument must be an interface
+at:
+    internal/testdata/err/as_not_interface/app.go:19:2

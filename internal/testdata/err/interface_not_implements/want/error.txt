@@ -1,0 +1,3 @@
+loom: provider NewThing returns *Thing, which does not implement Greeter
+at:
+    internal/testdata/err/interface_not_implements/app.go:22:2

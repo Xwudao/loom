@@ -1,0 +1,3 @@
+loom: graphs AppGraph and appGraph both generate InitApp; rename one or use loom.Name
+at:
+    internal/testdata/err/name_conflict/app.go:24:13

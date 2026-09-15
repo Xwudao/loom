@@ -1,0 +1,10 @@
+loom: cannot build *App
+
+dependency path:
+    *App
+      -> *UserService
+      -> UserStore  (missing)
+
+providers:
+    internal/testdata/err/missing/missing.go:14:6  NewApp(*UserService)
+    internal/testdata/err/missing/missing.go:13:6  NewUserService(UserStore)

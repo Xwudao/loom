@@ -1,0 +1,4 @@
+loom: multiple providers found for *DB
+providers:
+    internal/testdata/err/dup/dup.go:13:15  NewMySQL()
+    internal/testdata/err/dup/dup.go:14:15  NewPostgres()
