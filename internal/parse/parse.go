@@ -439,22 +439,21 @@ func (p *Parser) checkProviders(g *model.Graph) error {
 
 func (p *Parser) duplicateError(g *model.Graph, t types.Type, existing []*model.Provider, pr *model.Provider) error {
 	f := diag.Formatter{Current: g.Pkg.Types, Base: p.base}
-	frames := make([]diag.Frame, 0, len(existing)+1)
-	for _, e := range existing {
+	all := make([]*model.Provider, 0, len(existing)+1)
+	all = append(all, existing...)
+	all = append(all, pr)
+	frames := make([]diag.Frame, 0, len(all))
+	for _, e := range all {
 		frames = append(frames, diag.Frame{
 			Type:  t,
 			Label: diag.ProviderLabel(e.Name, e.Inputs, f),
 			Pos:   e.Pos,
 		})
 	}
-	frames = append(frames, diag.Frame{
-		Type:  t,
-		Label: diag.ProviderLabel(pr.Name, pr.Inputs, f),
-		Pos:   pr.Pos,
-	})
 	return &diag.Error{
 		Msg:       fmt.Sprintf("multiple providers found for %s", f.Type(t)),
 		Providers: frames,
+		Hint:      model.SameConstructorHint(all, f.Type),
 		Fmt:       f,
 	}
 }

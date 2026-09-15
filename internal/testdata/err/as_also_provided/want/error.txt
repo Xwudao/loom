@@ -1,0 +1,7 @@
+loom: multiple providers found for *store
+providers:
+    internal/testdata/err/as_also_provided/app.go:33:15  NewStore()
+    internal/testdata/err/as_also_provided/app.go:34:17  NewStore()
+
+hint:
+    loom.As[Store](NewStore) already provides both *store and Store; remove the separate loom.Provide(NewStore)

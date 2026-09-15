@@ -265,11 +265,10 @@ func (b *builder) cycleError(t types.Type, stack []frame) error {
 
 func (b *builder) duplicateError(t types.Type, cands []*model.Provider) error {
 	f := b.fmt()
-	e := &diag.Error{
+	return &diag.Error{
 		Msg:  "multiple providers found for " + f.Type(t),
 		Pos:  cands[1].Pos,
 		Fmt:  f,
-		Hint: cands[0].Name + " at " + cands[0].Pos.String() + " and " + cands[1].Name + " at " + cands[1].Pos.String(),
+		Hint: model.SameConstructorHint(cands, f.Type),
 	}
-	return e
 }

@@ -110,3 +110,36 @@ func (ix *Index) Lookup(t types.Type) []*Provider {
 	}
 	return nil
 }
+
+// SameConstructorHint explains the most common duplicate provider: one
+// constructor registered both directly and through loom.As.
+//
+// As already provides the concrete type as well as the interface, so the plain
+// Provide is redundant. Without this hint the provider list shows the same
+// constructor name twice at two nearby positions, which reads like a bug in
+// loom rather than a redundant line.
+//
+// typeString renders a type for display, so this package does not need to know
+// how diagnostics format types.
+func SameConstructorHint(cands []*Provider, typeString func(types.Type) string) string {
+	for i := 0; i < len(cands); i++ {
+		for j := i + 1; j < len(cands); j++ {
+			a, b := cands[i], cands[j]
+			if a.RefObj == nil || a.RefObj != b.RefObj {
+				continue
+			}
+			bound, plain := a, b
+			if bound.Binding == nil {
+				bound, plain = b, a
+			}
+			if bound.Binding == nil {
+				continue
+			}
+			return "loom.As[" + typeString(bound.Binding) + "](" + bound.RefName +
+				") already provides both " + typeString(plain.Output) + " and " +
+				typeString(bound.Binding) + "; remove the separate loom.Provide(" +
+				plain.RefName + ")"
+		}
+	}
+	return ""
+}
