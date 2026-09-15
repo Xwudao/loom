@@ -302,6 +302,15 @@ loom version
 loom help
 ```
 
+`loom generate -dry-run` reports what would change without writing, and exits
+non-zero when a committed generated file is out of date, so it can gate CI:
+
+```
+$ loom generate -dry-run ./...
+loom: internal/app/loom_gen.go out of date
+loom: 1 generated file(s) out of date; run 'loom generate'
+```
+
 ```
 $ loom graph ./examples/full
 InitApp  (examples/full/graph.go:22)

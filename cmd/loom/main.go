@@ -75,6 +75,7 @@ func generateCmd(args []string) error {
 		fmt.Fprintln(os.Stderr, "loom: no graph declarations found")
 		return nil
 	}
+	var stale []string
 	for _, r := range results {
 		path := relPath(r.File)
 		switch {
@@ -82,9 +83,15 @@ func generateCmd(args []string) error {
 			fmt.Printf("loom: %s unchanged\n", path)
 		case *dryRun:
 			fmt.Printf("loom: %s out of date\n", path)
+			stale = append(stale, path)
 		default:
 			fmt.Printf("loom: wrote %s (%v)\n", path, r.Graphs)
 		}
+	}
+	if len(stale) > 0 {
+		// Treat -dry-run as a check so it can gate CI: a non-zero exit means
+		// the committed generated files are stale.
+		return fmt.Errorf("loom: %d generated file(s) out of date; run 'loom generate'", len(stale))
 	}
 	return nil
 }
@@ -109,7 +116,8 @@ Usage:
     loom help                     print this help
 
 Flags for generate:
-    -dry-run        report out-of-date files without writing them
+    -dry-run        check that generated files are up to date and exit non-zero
+                    if they are not; useful in CI
     -loom-path P    import path of the loom package
 `)
 }
