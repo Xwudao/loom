@@ -1,5 +1,7 @@
 # Loom
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 **Loom is a compile-time dependency injection tool for Go.**
 
 You declare a dependency graph with `loom.Graph`, ordinary constructor
