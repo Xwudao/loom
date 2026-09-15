@@ -375,6 +375,8 @@ explicit package-qualified name over a numeric suffix, in these cases:
 ```
 loom generate ./...        generate initializers (default ./...)
 loom graph ./cmd/server    print the dependency graph
+loom graph -format=dot ./cmd/server | dot -Tsvg > graph.svg
+loom graph -format=json ./cmd/server
 loom version
 loom help
 ```
@@ -457,7 +459,9 @@ loom/
 ```
 
 See [`docs/design.md`](docs/design.md) for the design decisions behind the
-marker API, the type model, and the lifecycle semantics.
+marker API, the type model, and the lifecycle semantics. See
+[`docs/compatibility.md`](docs/compatibility.md) for the API and generated-code
+compatibility policy.
 
 ## Development
 

@@ -104,6 +104,7 @@ type parseState struct {
 	// explicitName is set by loom.Name; empty means derive from the variable.
 	explicitName string
 	withCtx      bool
+	moduleStack  []string
 }
 
 func (p *Parser) graph(pkg *packages.Package, varName string, call *ast.CallExpr) (*model.Graph, error) {
@@ -176,7 +177,10 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 			if err != nil {
 				return err
 			}
-			if err := p.options(g, st, mpkg, call.Args); err != nil {
+			st.moduleStack = append(st.moduleStack, moduleName(v))
+			err = p.options(g, st, mpkg, call.Args)
+			st.moduleStack = st.moduleStack[:len(st.moduleStack)-1]
+			if err != nil {
 				return err
 			}
 			continue
@@ -194,7 +198,7 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 			if err != nil {
 				return err
 			}
-			g.Providers = append(g.Providers, pr)
+			p.addProvider(g, st, pr)
 		case fn.Name() == "As":
 			iface, err := p.bindingType(pkg, call)
 			if err != nil {
@@ -204,13 +208,13 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 			if err != nil {
 				return err
 			}
-			g.Providers = append(g.Providers, pr)
+			p.addProvider(g, st, pr)
 		case fn.Name() == "Supply":
 			pr, err := p.supply(pkg, call)
 			if err != nil {
 				return err
 			}
-			g.Providers = append(g.Providers, pr)
+			p.addProvider(g, st, pr)
 		case fn.Name() == "Module":
 			if err := p.options(g, st, pkg, call.Args); err != nil {
 				return err
@@ -228,6 +232,20 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 		}
 	}
 	return nil
+}
+
+// addProvider preserves the module expansion path for diagnostics. Copying is
+// required because the parser reuses one stack while recursively expanding.
+func (p *Parser) addProvider(g *model.Graph, st *parseState, pr *model.Provider) {
+	pr.Modules = append([]string(nil), st.moduleStack...)
+	g.Providers = append(g.Providers, pr)
+}
+
+func moduleName(v *types.Var) string {
+	if v.Pkg() == nil {
+		return v.Name()
+	}
+	return v.Pkg().Name() + "." + v.Name()
 }
 
 func (p *Parser) nameOption(pkg *packages.Package, call *ast.CallExpr) (string, error) {
@@ -492,7 +510,7 @@ func (p *Parser) duplicateError(g *model.Graph, t types.Type, existing []*model.
 	for _, e := range all {
 		frames = append(frames, diag.Frame{
 			Type:  t,
-			Label: diag.ProviderLabel(e.Name, e.Inputs, f),
+			Label: diag.ProviderLabel(e.Name, e.Inputs, f) + e.ModuleSuffix(),
 			Pos:   e.Pos,
 		})
 	}

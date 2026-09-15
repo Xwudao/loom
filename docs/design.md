@@ -197,8 +197,8 @@ provider 必须是**包级函数、包级 var/const（函数类型）、泛型�
 - `Stop`：逆序执行；`ctx` 取消则记录错误并**停止继续**（把超时控制权交给调用者）；
   所有 hook 错误用 `errors.Join` 聚合；重复 `Stop` 返回 nil。
 - hook panic 被 recover 并转成 error，参与 rollback/聚合；不吞掉其它 hook。
-- `Append` / `AddCleanup` 只允许在 Start 之前（含 starting 阶段），之后调用 panic，
-  避免「启动后再偷偷注册 hook」这种不可推理的行为。
+- `Append` / `AddCleanup` 只允许在调用 Start 之前；一旦进入 `starting` 即 panic。
+  否则并发追加的 hook 可能错过自己的 `OnStart`，其 stop 语义不可推理。
 - 并发：内部 `sync.Mutex`；`Start`/`Stop` 由状态机拒绝重入。
 
 ## 4. 泛型与 TypeKey

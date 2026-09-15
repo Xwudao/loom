@@ -113,9 +113,9 @@ func NewLifecycle() *Lifecycle { return &Lifecycle{} }
 // Append registers a hook. Hooks are started in registration order and
 // stopped in reverse registration order.
 //
-// Append must be called before the lifecycle is started. Calling it
-// afterwards panics, because hooks registered after Start cannot be given
-// consistent start/stop semantics.
+// Append must be called before Start. Calling it once Start has begun panics,
+// because a hook registered concurrently with startup cannot reliably receive
+// its OnStart call.
 func (l *Lifecycle) Append(h Hook) {
 	if h.OnStart == nil && h.OnStop == nil {
 		return
@@ -126,9 +126,9 @@ func (l *Lifecycle) Append(h Hook) {
 // AddCleanup registers a constructor cleanup. Cleanups run in reverse
 // registration order, after any stop hooks that were started.
 //
-// AddCleanup must be called before the lifecycle is started. Calling it
-// afterwards panics. A nil cleanup is ignored, which lets generated code
-// register a constructor's cleanup unconditionally.
+// AddCleanup must be called before Start. Calling it once Start has begun
+// panics. A nil cleanup is ignored, which lets generated code register a
+// constructor's cleanup unconditionally.
 func (l *Lifecycle) AddCleanup(c Cleanup) {
 	if c == nil {
 		return
@@ -139,12 +139,10 @@ func (l *Lifecycle) AddCleanup(c Cleanup) {
 func (l *Lifecycle) append(e entry, what string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	switch l.state {
-	case stateInit, stateStarting:
-		l.entries = append(l.entries, e)
-	default:
-		panic("loom: Lifecycle." + what + " called after the lifecycle was started")
+	if l.state != stateInit {
+		panic("loom: Lifecycle." + what + " called after Start began")
 	}
+	l.entries = append(l.entries, e)
 }
 
 // State reports the current lifecycle state. It is intended for diagnostics

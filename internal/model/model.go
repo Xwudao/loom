@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/types/typeutil"
@@ -35,6 +36,9 @@ type Provider struct {
 	Pos token.Position
 	// DeclPos is the position where the constructor is defined.
 	DeclPos token.Position
+	// Modules records the named module expansion path that included this
+	// provider. It is empty for providers written directly in the graph.
+	Modules []string
 
 	// Output is the type of the value this provider produces.
 	Output types.Type
@@ -114,6 +118,14 @@ func (ix *Index) Lookup(t types.Type) []*Provider {
 
 // Targets lists every type this provider serves: its result plus each interface
 // it is bound to.
+// ModuleSuffix returns a concise provenance annotation for diagnostics.
+func (p *Provider) ModuleSuffix() string {
+	if len(p.Modules) == 0 {
+		return ""
+	}
+	return " (via " + strings.Join(p.Modules, " -> ") + ")"
+}
+
 func (p *Provider) Targets() []types.Type {
 	targets := make([]types.Type, 0, 1+len(p.Bindings))
 	targets = append(targets, p.Output)

@@ -111,13 +111,17 @@ func usage(w *os.File) {
 
 Usage:
     loom generate [patterns...]   generate initializers (default ./...)
-    loom graph [patterns...]      print the dependency graph
+    loom graph [flags] [patterns...]  print the dependency graph
     loom version                  print the version
     loom help                     print this help
 
 Flags for generate:
     -dry-run        check that generated files are up to date and exit non-zero
                     if they are not; useful in CI
+    -loom-path P    import path of the loom package
+
+Flags for graph:
+    -format F       output format: text (default), dot, or json
     -loom-path P    import path of the loom package
 `)
 }

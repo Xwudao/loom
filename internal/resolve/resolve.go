@@ -196,7 +196,7 @@ func (b *builder) path(stack []frame, missing types.Type) []diag.Frame {
 	for _, fr := range stack {
 		out = append(out, diag.Frame{
 			Type:  fr.typ,
-			Label: diag.ProviderLabel(fr.provider.Name, fr.provider.Inputs, f),
+			Label: diag.ProviderLabel(fr.provider.Name, fr.provider.Inputs, f) + fr.provider.ModuleSuffix(),
 			Pos:   fr.provider.DeclPos,
 		})
 	}
@@ -255,7 +255,7 @@ func (b *builder) cycleError(t types.Type, stack []frame) error {
 	for _, fr := range cycle {
 		path = append(path, diag.Frame{
 			Type:  fr.typ,
-			Label: diag.ProviderLabel(fr.provider.Name, fr.provider.Inputs, f),
+			Label: diag.ProviderLabel(fr.provider.Name, fr.provider.Inputs, f) + fr.provider.ModuleSuffix(),
 			Pos:   fr.provider.DeclPos,
 		})
 	}

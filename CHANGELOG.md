@@ -4,6 +4,23 @@ All notable changes to Loom are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Loom adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-15
+
+### Added
+
+- MIT license, a compatibility policy, and CI checks for generated-file drift,
+  `go vet`, and race-enabled tests.
+- `loom graph -format=json` and `loom graph -format=dot` for tooling and graph
+  visualization. The existing text format remains the default.
+- Module expansion paths in provider diagnostics, making it clear which nested
+  module included a provider.
+
+### Fixed
+
+- `Lifecycle.Append` and `Lifecycle.AddCleanup` now reject calls as soon as
+  `Start` begins. Previously an entry appended during startup could miss its
+  `OnStart` callback and have inconsistent shutdown semantics.
+
 ## [0.2.0] - 2026-09-15
 
 ### Added
@@ -98,6 +115,7 @@ anything not listed under "What Loom is not" in the README is likely to change.
 
 - Initial release.
 
+[0.2.1]: https://github.com/Xwudao/loom/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Xwudao/loom/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Xwudao/loom/compare/v0.0.4...v0.1.0
 [0.0.4]: https://github.com/Xwudao/loom/compare/v0.0.3...v0.0.4

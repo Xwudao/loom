@@ -217,18 +217,31 @@ func TestLifecyclePanicBecomesError(t *testing.T) {
 	}
 }
 
-func TestLifecycleAppendAfterStartPanics(t *testing.T) {
+func TestLifecycleAppendOnceStartBeginsPanics(t *testing.T) {
 	lc := loom.NewLifecycle()
-	lc.Append(loom.Hook{OnStart: func(context.Context) error { return nil }})
-	if err := lc.Start(context.Background()); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() {
-		if recover() == nil {
-			t.Fatal("Append after Start did not panic")
-		}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	lc.Append(loom.Hook{OnStart: func(context.Context) error {
+		close(entered)
+		<-release
+		return nil
+	}})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = lc.Start(context.Background())
 	}()
-	lc.Append(loom.Hook{OnStart: func(context.Context) error { return nil }})
+	<-entered
+	panicked := func() (panicked bool) {
+		defer func() { panicked = recover() != nil }()
+		lc.Append(loom.Hook{OnStart: func(context.Context) error { return nil }})
+		return false
+	}()
+	close(release)
+	<-done
+	if !panicked {
+		t.Fatal("Append after Start began did not panic")
+	}
 }
 
 func TestLifecycleNilHookIsIgnored(t *testing.T) {
