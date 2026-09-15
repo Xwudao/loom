@@ -10,6 +10,7 @@ just a function.
 
 ```go
 var AppGraph = loom.Graph[*Application](
+    loom.WithContext(),
     loom.Provide(NewConfig),
     loom.Provide(NewLogger),
     loom.Provide(NewDatabase),
@@ -68,15 +69,57 @@ are bound explicitly, and resources are released in reverse order.
 | **gopls friendly** | The graph declaration is an ordinary package-level variable; nothing hides behind build tags. |
 | **Lifecycle support** | Ordered start/stop hooks and constructor cleanups, with rollback on failure. |
 | **Deterministic** | The same input always produces byte-identical output. |
+| **No stub files** | Graphs live in ordinary files, so refactoring and find-references work. |
 
 ## Install
 
+Pin the generator to your module, so everyone and CI run the same version:
+
 ```bash
-go get github.com/Xwudao/loom
+go get -tool github.com/Xwudao/loom/cmd/loom@latest
+go tool loom generate ./...
+```
+
+Or install the binary once:
+
+```bash
 go install github.com/Xwudao/loom/cmd/loom@latest
 ```
 
 `loom` is designed for Go 1.25 and newer (it is built and tested on Go 1.27).
+
+## Coming from Wire
+
+| Wire | Loom |
+| --- | --- |
+| `wire.NewSet(a, b)` | `loom.Module(loom.Provide(a), loom.Provide(b))` |
+| `wire.Build(...)` in a `wireinject` stub | `loom.Graph[T](...)` in an ordinary file |
+| `wire.Bind(new(I), new(*C))` | `loom.As[I](NewC)` |
+| injector `(T, func(), error)` | `(T, *loom.Lifecycle, error)` |
+| `defer cleanup()` | `defer lifecycle.Stop(ctx)` |
+
+Two differences are worth calling out.
+
+**`As` replaces `Provide`, it does not accompany it.** `loom.As[I](NewC)`
+registers `NewC` *and* exposes the same instance as `I`, so listing both is a
+duplicate provider. Loom says so directly:
+
+```
+loom: multiple providers found for *store
+providers:
+    internal/app/providers.go:33:15  NewStore()
+    internal/app/providers.go:34:17  NewStore()
+
+hint:
+    loom.As[Store](NewStore) already provides both *store and Store; remove the separate loom.Provide(NewStore)
+```
+
+**There is no stub file.** Wire kept its injectors behind a `wireinject` build
+tag, so the call site only type-checked after generation. A Loom graph is an
+ordinary package-level variable: gopls, `go vet` and `go test` all see it. The
+trade-off is that on the very first run the initializer a call site refers to
+does not exist yet; `loom generate` recognises exactly the `undefined: InitApp`
+errors it is about to fix and still reports every other type error.
 
 ## Quick start
 
