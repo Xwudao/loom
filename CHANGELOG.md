@@ -4,6 +4,26 @@ All notable changes to Loom are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Loom adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-15
+
+### Added
+
+- A graph may bind a constructor to an interface without re-declaring it:
+  `loom.As[I](pkg.NewC)` alongside the module that already provides `NewC` now
+  adds the binding to that provider instead of reporting a duplicate. This is
+  Wire's graph-level `wire.Bind` shape, and it is the only way to express the
+  binding when the interface lives in a package that imports the module —
+  putting `As` in the module would close an import cycle.
+  Listing one constructor twice in the same declaration is still an error, since
+  that is a redundant line rather than a statement about what the graph exposes.
+- A provider returning `context.Context` is now used instead of being reported
+  as a missing dependency. `loom.WithContext()` still threads the caller's
+  context and is still the recommended way, but a graph may supply its own, as
+  Wire projects with a `ProvideContext` function do. An explicit provider wins,
+  which keeps the generated function signature a straight conversion.
+
+Found while migrating a fourth project, which used both patterns.
+
 ## [0.1.0] - 2026-09-15
 
 First release intended for real projects. The API below is the stable surface;
@@ -78,6 +98,7 @@ anything not listed under "What Loom is not" in the README is likely to change.
 
 - Initial release.
 
+[0.2.0]: https://github.com/Xwudao/loom/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Xwudao/loom/compare/v0.0.4...v0.1.0
 [0.0.4]: https://github.com/Xwudao/loom/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/Xwudao/loom/compare/v0.0.2...v0.0.3

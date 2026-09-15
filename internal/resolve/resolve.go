@@ -108,8 +108,8 @@ func Build(g *model.Graph, lifecycle, contextType types.Type, base string) (*Pla
 	}
 	for _, p := range g.Providers {
 		b.index.Add(p.Output, p)
-		if p.Binding != nil {
-			b.index.Add(p.Binding, p)
+		for _, binding := range p.Bindings {
+			b.index.Add(binding, p)
 		}
 	}
 
@@ -130,7 +130,13 @@ func (b *builder) resolve(t types.Type, stack []frame) (*Step, error) {
 		b.memoize(t, s)
 		return s, nil
 	}
-	if b.context != nil && types.Identical(t, b.context) {
+	// context.Context is normally threaded in from the caller with
+	// loom.WithContext, but a graph may also supply it like any other
+	// dependency, which is a common Wire pattern. A provider wins, because it
+	// states what the context actually is; that keeps the generated signature a
+	// straight conversion of an injector that never took one.
+	cands := b.index.Lookup(t)
+	if len(cands) == 0 && b.context != nil && types.Identical(t, b.context) {
 		if !b.g.WithCtx {
 			return nil, b.missingError(t, stack, "add loom.WithContext() to the graph to inject context.Context")
 		}
@@ -139,7 +145,6 @@ func (b *builder) resolve(t types.Type, stack []frame) (*Step, error) {
 		return s, nil
 	}
 
-	cands := b.index.Lookup(t)
 	switch len(cands) {
 	case 0:
 		return nil, b.missingError(t, stack, "")
@@ -223,7 +228,7 @@ func (b *builder) interfaceSuggestion(t types.Type) string {
 	}
 	f := b.fmt()
 	for _, p := range b.g.Providers {
-		if types.Identical(p.Output, t) || p.Binding != nil {
+		if types.Identical(p.Output, t) || len(p.Bindings) > 0 {
 			continue
 		}
 		if types.AssignableTo(p.Output, t) {

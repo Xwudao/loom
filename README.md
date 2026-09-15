@@ -222,6 +222,27 @@ at:
 The concrete type remains available too, so `As` never creates a second
 instance.
 
+A graph may also expose a constructor that a module already provides. The
+binding stays in the graph, which matters when the interface lives in a package
+that imports the module — putting `As` in the module would close an import
+cycle:
+
+```go
+var StoreModule = loom.Module(
+    loom.Provide(NewStore),
+)
+
+// iface imports store, so the binding cannot live in StoreModule.
+var AppGraph = loom.Graph[*App](
+    StoreModule,
+    loom.As[iface.Finisher](store.NewStore),
+    loom.Provide(NewApp),
+)
+```
+
+Listing one constructor twice in the *same* declaration is still reported, since
+that is a redundant line rather than a statement about what the graph exposes.
+
 ## Modules
 
 Group providers into reusable sets. Modules nest, and including the same module
@@ -275,8 +296,21 @@ func NewHTTPServer(lc *loom.Lifecycle, cfg *Config) *HTTPServer {
 Hooks run in registration order on `Start` and in reverse on `Stop`. If a hook
 fails to start, already-started hooks and cleanups are rolled back.
 
-`context.Context` is injectable when the graph opts in with `loom.WithContext()`,
-which also adds a leading `ctx` parameter to the generated function.
+`context.Context` is injectable in two ways. `loom.WithContext()` threads the
+caller's context through, adding a leading `ctx` parameter to the generated
+function:
+
+```go
+var AppGraph = loom.Graph[*App](
+    loom.WithContext(),
+    ...
+)
+```
+
+Or a graph supplies it like any other dependency, which is what a Wire injector
+with a `ProvideContext` function does. An explicit provider wins over
+`WithContext`, so `loom.Provide(ProvideContext)` keeps the generated signature
+unchanged.
 
 ## Cleanup and rollback
 

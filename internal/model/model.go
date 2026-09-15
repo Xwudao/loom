@@ -38,9 +38,10 @@ type Provider struct {
 
 	// Output is the type of the value this provider produces.
 	Output types.Type
-	// Binding, when non-nil, is an interface type this provider also serves.
-	// It is set by loom.As[I](ctor).
-	Binding types.Type
+	// Bindings are the interface types this provider also serves, set by
+	// loom.As[I](ctor). A graph may add one to a constructor a module already
+	// provides, which is how Wire's graph-level wire.Bind is expressed.
+	Bindings []types.Type
 
 	// Inputs are the constructor's parameter types, in order. For a variadic
 	// constructor the element type is used and Variadic is set.
@@ -111,13 +112,34 @@ func (ix *Index) Lookup(t types.Type) []*Provider {
 	return nil
 }
 
+// Targets lists every type this provider serves: its result plus each interface
+// it is bound to.
+func (p *Provider) Targets() []types.Type {
+	targets := make([]types.Type, 0, 1+len(p.Bindings))
+	targets = append(targets, p.Output)
+	return append(targets, p.Bindings...)
+}
+
+// HasBinding reports whether the provider already serves the interface t.
+func HasBinding(p *Provider, t types.Type) bool {
+	for _, b := range p.Bindings {
+		if types.Identical(b, t) {
+			return true
+		}
+	}
+	return false
+}
+
 // SameConstructorHint explains the most common duplicate provider: one
-// constructor registered both directly and through loom.As.
+// constructor listed twice in the same provider declaration.
 //
-// As already provides the concrete type as well as the interface, so the plain
-// Provide is redundant. Without this hint the provider list shows the same
-// constructor name twice at two nearby positions, which reads like a bug in
-// loom rather than a redundant line.
+// loom.As already provides the concrete type as well as the interface, so the
+// plain Provide beside it is redundant. Without this hint the provider list
+// shows the same constructor name twice at two nearby positions, which reads
+// like a bug in loom rather than a redundant line.
+//
+// This covers only entries in one declaration. A graph may legitimately expose
+// a constructor that a module already provides; see Parser.checkProviders.
 //
 // typeString renders a type for display, so this package does not need to know
 // how diagnostics format types.
@@ -125,21 +147,36 @@ func SameConstructorHint(cands []*Provider, typeString func(types.Type) string) 
 	for i := 0; i < len(cands); i++ {
 		for j := i + 1; j < len(cands); j++ {
 			a, b := cands[i], cands[j]
-			if a.RefObj == nil || a.RefObj != b.RefObj {
+			if a.RefObj == nil || a.RefObj != b.RefObj || !SameTypeArgs(a, b) {
 				continue
 			}
 			bound, plain := a, b
-			if bound.Binding == nil {
+			if len(bound.Bindings) == 0 {
 				bound, plain = b, a
 			}
-			if bound.Binding == nil {
+			if len(bound.Bindings) == 0 {
 				continue
 			}
-			return "loom.As[" + typeString(bound.Binding) + "](" + bound.RefName +
+			iface := typeString(bound.Bindings[0])
+			return "loom.As[" + iface + "](" + bound.RefName +
 				") already provides both " + typeString(plain.Output) + " and " +
-				typeString(bound.Binding) + "; remove the separate loom.Provide(" +
-				plain.RefName + ")"
+				iface + "; remove the separate loom.Provide(" + plain.RefName + ")"
 		}
 	}
 	return ""
+}
+
+// SameTypeArgs reports whether two providers instantiate the same generic
+// declaration the same way, so Repository[User] and Repository[Article] are
+// never treated as the same constructor.
+func SameTypeArgs(a, b *Provider) bool {
+	if len(a.TypeArgs) != len(b.TypeArgs) {
+		return false
+	}
+	for i := range a.TypeArgs {
+		if !types.Identical(a.TypeArgs[i], b.TypeArgs[i]) {
+			return false
+		}
+	}
+	return true
 }

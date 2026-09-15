@@ -271,7 +271,7 @@ func (p *Parser) provide(pkg *packages.Package, call *ast.CallExpr, iface types.
 				"provider %s returns %s, which does not implement %s",
 				pr.Name, p.tf(pkg, pr.Output), p.tf(pkg, iface))
 		}
-		pr.Binding = iface
+		pr.Bindings = append(pr.Bindings, iface)
 	}
 	return pr, nil
 }
@@ -416,25 +416,71 @@ func (p *Parser) supply(pkg *packages.Package, call *ast.CallExpr) (*model.Provi
 }
 
 // checkProviders validates uniqueness and framework-reserved types.
+//
+// A provider that only adds interface bindings to a constructor another
+// declaration already provides is merged rather than rejected. loom.As[I](ctor)
+// does two things at once, registering ctor and exposing it as I; a graph often
+// needs only the second half, because a module already registers the
+// constructor. That is how Wire's graph-level wire.Bind is expressed, and
+// rejecting it would force the binding into the module, where the interface
+// package frequently imports the module back and so cannot be imported at all.
 func (p *Parser) checkProviders(g *model.Graph) error {
 	var index model.Index
+	kept := make([]*model.Provider, 0, len(g.Providers))
 	for _, pr := range g.Providers {
-		targets := []types.Type{pr.Output}
-		if pr.Binding != nil {
-			targets = append(targets, pr.Binding)
-		}
-		for _, t := range targets {
-			if p.lifecyclePtr != nil && types.Identical(t, p.lifecyclePtr) {
-				return p.errPos(g.Pkg, pr.Pos, "provider %s provides %s, which loom owns and cannot be provided", pr.Name, p.tf(g.Pkg, t))
+		if p.lifecyclePtr != nil {
+			for _, t := range pr.Targets() {
+				if types.Identical(t, p.lifecyclePtr) {
+					return p.errPos(g.Pkg, pr.Pos, "provider %s provides %s, which loom owns and cannot be provided", pr.Name, p.tf(g.Pkg, t))
+				}
 			}
+		}
+
+		output := index.Lookup(pr.Output)
+		if len(output) > 0 && p.extends(output[0], pr, index) {
+			continue
+		}
+
+		for _, t := range pr.Targets() {
 			existing := index.Lookup(t)
 			if len(existing) > 0 {
 				return p.duplicateError(g, t, existing, pr)
 			}
 			index.Add(t, pr)
 		}
+		kept = append(kept, pr)
 	}
+	g.Providers = kept
 	return nil
+}
+
+// extends folds pr into existing when pr only adds interface bindings for a
+// constructor that existing already provides, and reports whether it did.
+//
+// The two entries must come from different declarations. Listing one
+// constructor twice in the same provider set stays an error, because that is
+// the redundancy the diagnostic explains.
+func (p *Parser) extends(existing, pr *model.Provider, index model.Index) bool {
+	if len(pr.Bindings) == 0 {
+		return false
+	}
+	if existing.RefObj == nil || existing.RefObj != pr.RefObj || !model.SameTypeArgs(existing, pr) {
+		return false
+	}
+	if existing.Pos.Filename == pr.Pos.Filename {
+		return false
+	}
+	for _, b := range pr.Bindings {
+		if model.HasBinding(existing, b) {
+			continue
+		}
+		if taken := index.Lookup(b); len(taken) > 0 {
+			return false
+		}
+		existing.Bindings = append(existing.Bindings, b)
+		index.Add(b, existing)
+	}
+	return true
 }
 
 func (p *Parser) duplicateError(g *model.Graph, t types.Type, existing []*model.Provider, pr *model.Provider) error {

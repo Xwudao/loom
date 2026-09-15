@@ -126,7 +126,10 @@ func InitApp(ctx context.Context) (*Application, *loom.Lifecycle, error)
 - **固定签名**：不根据「有没有 lifecycle hook」推断签名，避免新增 provider 时调用点“无故”变化。
 - 始终返回 `*loom.Lifecycle`：它是运行时唯一的原语，承担 Start/Stop/rollback。
 - `loom.WithContext()` 是显式选项：声明后，`context.Context` 成为可注入依赖，
-  rollback 也复用同一个 ctx。没有该选项时注入 `context.Context` 会得到带提示的错误。
+  rollback 也复用同一个 ctx。没有该选项且图中也没有 provider 返回 `context.Context`
+  时，注入 `context.Context` 会得到带提示的错误。
+- 图中若有 provider 直接返回 `context.Context`（如 `system.ProvideContext`），
+  优先使用它：这是 Wire 项目的常见写法，且能保持生成函数签名不变。
 - `loom.Supply` 用于把既有值送进图（详见 §5）。
 
 ---
