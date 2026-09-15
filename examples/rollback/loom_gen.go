@@ -9,6 +9,9 @@ import (
 	"github.com/Xwudao/loom"
 )
 
+// Keep AppGraph referenced: it is a compile-time graph declaration.
+var _ = AppGraph
+
 // InitApp builds *App from the graph declared by AppGraph.
 func InitApp() (*App, *loom.Lifecycle, error) {
 	lifecycle := loom.NewLifecycle()

@@ -6,6 +6,9 @@ import (
 	"github.com/Xwudao/loom"
 )
 
+// Keep ServerGraph referenced: it is a compile-time graph declaration.
+var _ = ServerGraph
+
 // InitServer builds *Server from the graph declared by ServerGraph.
 func InitServer() (*Server, *loom.Lifecycle, error) {
 	lifecycle := loom.NewLifecycle()
@@ -16,6 +19,9 @@ func InitServer() (*Server, *loom.Lifecycle, error) {
 
 	return server, lifecycle, nil
 }
+
+// Keep WorkerGraph referenced: it is a compile-time graph declaration.
+var _ = WorkerGraph
 
 // InitWorker builds *Worker from the graph declared by WorkerGraph.
 func InitWorker() (*Worker, *loom.Lifecycle, error) {

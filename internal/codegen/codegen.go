@@ -329,6 +329,8 @@ func (w *graphWriter) loomAlias() string { return w.f.imports.add(w.f.opts.LoomP
 
 func (w *graphWriter) emit() error {
 	target := w.typeString(w.g.Target)
+	fmt.Fprintf(&w.buf, "// Keep %s referenced: it is a compile-time graph declaration.\n", w.g.VarName)
+	fmt.Fprintf(&w.buf, "var _ = %s\n\n", w.g.VarName)
 	fmt.Fprintf(&w.buf, "// %s builds %s from the graph declared by %s.\n",
 		w.g.Name, target, w.g.VarName)
 	if w.g.WithCtx {

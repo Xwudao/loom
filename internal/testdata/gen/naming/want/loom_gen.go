@@ -9,6 +9,9 @@ import (
 	"github.com/Xwudao/loom/internal/testdata/gen/naming/web"
 )
 
+// Keep mainAppGraph referenced: it is a compile-time graph declaration.
+var _ = mainAppGraph
+
 // mainApp builds *web.MainApp from the graph declared by mainAppGraph.
 func mainApp() (*web.MainApp, *loom.Lifecycle, error) {
 	lifecycle := loom.NewLifecycle()

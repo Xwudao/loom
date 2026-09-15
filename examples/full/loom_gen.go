@@ -9,6 +9,9 @@ import (
 	"github.com/Xwudao/loom"
 )
 
+// Keep AppGraph referenced: it is a compile-time graph declaration.
+var _ = AppGraph
+
 // InitApp builds *Application from the graph declared by AppGraph.
 func InitApp(ctx context.Context) (*Application, *loom.Lifecycle, error) {
 	lifecycle := loom.NewLifecycle()
@@ -41,6 +44,9 @@ func InitApp(ctx context.Context) (*Application, *loom.Lifecycle, error) {
 
 	return application, lifecycle, nil
 }
+
+// Keep WorkerGraph referenced: it is a compile-time graph declaration.
+var _ = WorkerGraph
 
 // InitWorker builds *Worker from the graph declared by WorkerGraph.
 func InitWorker() (*Worker, *loom.Lifecycle, error) {
