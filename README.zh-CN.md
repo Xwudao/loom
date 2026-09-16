@@ -328,9 +328,12 @@ loom generate ./...        生成初始化函数（默认 ./...）
 loom graph ./cmd/server    输出依赖图
 loom graph -format=dot ./cmd/server | dot -Tsvg > graph.svg
 loom graph -format=json ./cmd/server
+loom skills                  # 将 agent skill 安装到 .agents/skills/loom
 loom version
 loom help
 ```
+
+`loom skills` 会查找最近项目中的 `.agents/skills` 目录（因此可从项目子目录运行），并将 Loom 用法 skill 安装到 `.agents/skills/loom`。其中还包含独立的 Wire 迁移参考文档。
 
 `loom generate -dry-run` 会报告将发生的变化而不写入；当已提交的生成文件过期时会以非零状态退出，适合作为 CI 门禁：
 

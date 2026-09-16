@@ -379,9 +379,12 @@ loom generate ./...        generate initializers (default ./...)
 loom graph ./cmd/server    print the dependency graph
 loom graph -format=dot ./cmd/server | dot -Tsvg > graph.svg
 loom graph -format=json ./cmd/server
+loom skills                  # install the agent skill into .agents/skills/loom
 loom version
 loom help
 ```
+
+`loom skills` finds the nearest project `.agents/skills` directory (so it also works from a subdirectory) and installs the Loom usage skill at `.agents/skills/loom`. The skill includes a separate Wire migration reference.
 
 `loom generate -dry-run` reports what would change without writing, and exits
 non-zero when a committed generated file is out of date, so it can gate CI:

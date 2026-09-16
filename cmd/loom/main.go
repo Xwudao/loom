@@ -3,6 +3,7 @@
 // Usage:
 //
 //	loom generate [patterns...]   generate initializers (default ./...)
+//	loom skills                   install the Loom agent skill
 //	loom version                  print the version
 //	loom help                     print this help
 package main
@@ -38,6 +39,8 @@ func run(args []string) error {
 		return generateCmd(args[1:])
 	case "graph":
 		return graphCmd(args[1:])
+	case "skills":
+		return skillsCmd(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("loom %s\n", version)
 		return nil
@@ -112,6 +115,7 @@ func usage(w *os.File) {
 Usage:
     loom generate [patterns...]   generate initializers (default ./...)
     loom graph [flags] [patterns...]  print the dependency graph
+    loom skills                       install the Loom agent skill into .agents/skills
     loom version                  print the version
     loom help                     print this help
 
