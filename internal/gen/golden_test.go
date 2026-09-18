@@ -91,6 +91,10 @@ func TestGoldenErrors(t *testing.T) {
 			}
 			want := readFile(t, filepath.Join(base, name, "want", "error.txt"))
 			got := strings.TrimRight(err.Error(), "\n") + "\n"
+			// Diagnostics render paths relative to the repository root, which uses
+			// backslashes on Windows. Compare with one separator so golden files
+			// stay portable.
+			got = strings.ReplaceAll(got, `\`, "/")
 			if got != want {
 				t.Errorf("diagnostic differs from golden file\n--- got ---\n%s\n--- want ---\n%s", got, want)
 			}
@@ -118,7 +122,7 @@ func TestGeneratedCompiles(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		for _, path := range generated {
-			os.Remove(path)
+			_ = os.Remove(path)
 		}
 	})
 
@@ -152,7 +156,7 @@ func InitApp() (*App, error) { return nil, nil }
 	if err := os.WriteFile(stale, []byte(planted), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Remove(stale) })
+	t.Cleanup(func() { _ = os.Remove(stale) })
 
 	results, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}})
 	if err != nil {

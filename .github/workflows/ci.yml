@@ -7,14 +7,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum supported version and the current release. Windows is in
+        # the matrix because path handling (drive letters, separators) differs.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ["1.25.x", "stable"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - run: go vet ./...
+      # The race detector needs a C toolchain; the Windows runner does not
+      # reliably provide one, so Windows runs the plain test suite.
+      - if: matrix.os == 'windows-latest'
+        run: go test ./...
+      - if: matrix.os != 'windows-latest'
+        run: go test -race ./...
+      - name: Check generated files are fresh
+        run: go run ./cmd/loom generate -dry-run ./...
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-      - run: go vet ./...
-      - run: go test -race ./...
-      - run: go run ./cmd/loom generate -dry-run ./...
+          cache: true
+      - name: Check gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4

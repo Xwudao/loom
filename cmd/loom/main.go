@@ -110,7 +110,7 @@ func relPath(path string) string {
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `loom - compile-time dependency injection for Go
+	_, _ = fmt.Fprint(w, `loom - compile-time dependency injection for Go
 
 Usage:
     loom generate [patterns...]   generate initializers (default ./...)
