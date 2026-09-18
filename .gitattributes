@@ -1,0 +1,4 @@
+# Check every text file out with LF, including on Windows. Loom compares
+# generated files and golden files byte for byte, and both gofmt and the
+# generator emit LF, so a CRLF checkout would report the tree as stale.
+* text=auto eol=lf
