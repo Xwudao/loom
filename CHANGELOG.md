@@ -4,6 +4,44 @@ All notable changes to Loom are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Loom adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-18
+
+### Added
+
+- Variadic constructors: a `...T` parameter is injected from a `[]T` provider
+  and passed with `...`. Previously the final parameter was treated as a single
+  element, so a slice provider could not satisfy it.
+- CI runs on Linux, macOS, and Windows against the minimum Go version and the
+  current release, with `gofmt` and `golangci-lint` checks, Dependabot updates,
+  and a tag-driven release workflow that builds binaries with the version
+  injected.
+
+### Fixed
+
+- `loom.Provide` of a method value or method expression is now rejected with a
+  diagnostic. Previously it was accepted and generated a call to a function
+  that does not exist.
+- A graph-level `loom.As` that binds a module-provided constructor is
+  recognised when the module and the graph are declared in the same file.
+  Previously the declaration file was used to tell provider sets apart, so the
+  binding was reported as a duplicate provider whose hint told the user to
+  remove the binding.
+
+## [0.2.3] - 2026-09-16
+
+### Added
+
+- `loom skills` installs the Loom usage skill, with a Wire migration
+  reference, into the nearest `.agents/skills` directory.
+- A Simplified Chinese README.
+
+## [0.2.2] - 2026-09-15
+
+### Added
+
+- Generated files now reference their graph declaration (`var _ = AppGraph`),
+  so the declaration is visibly part of the compiled package.
+
 ## [0.2.1] - 2026-09-15
 
 ### Added
@@ -115,6 +153,10 @@ anything not listed under "What Loom is not" in the README is likely to change.
 
 - Initial release.
 
+[Unreleased]: https://github.com/Xwudao/loom/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Xwudao/loom/compare/v0.2.3...v0.3.0
+[0.2.3]: https://github.com/Xwudao/loom/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/Xwudao/loom/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Xwudao/loom/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Xwudao/loom/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Xwudao/loom/compare/v0.0.4...v0.1.0
