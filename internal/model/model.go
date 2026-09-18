@@ -39,6 +39,12 @@ type Provider struct {
 	// Modules records the named module expansion path that included this
 	// provider. It is empty for providers written directly in the graph.
 	Modules []string
+	// DeclSite identifies the declaration whose argument list contains this
+	// entry: the loom.Graph call, a named loom.Module call, or an inline
+	// loom.Module call. Two entries with the same constructor and the same site
+	// are the redundant double-listing Loom reports; different sites mean a
+	// binding is being added to a constructor another declaration provides.
+	DeclSite token.Pos
 
 	// Output is the type of the value this provider produces.
 	Output types.Type
@@ -47,8 +53,9 @@ type Provider struct {
 	// provides, which is how Wire's graph-level wire.Bind is expressed.
 	Bindings []types.Type
 
-	// Inputs are the constructor's parameter types, in order. For a variadic
-	// constructor the element type is used and Variadic is set.
+	// Inputs are the constructor's parameter types, in order. The final
+	// parameter of a variadic constructor keeps its slice type, and generated
+	// code spreads that slice with "...".
 	Inputs   []types.Type
 	Variadic bool
 

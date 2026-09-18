@@ -179,7 +179,9 @@ func NewThing(...) (T, Cleanup, error)
 ```
 
 `Cleanup` may also be `func()`, `func() error`, or `func(context.Context)`; Loom
-adapts it. Multi-value providers (`func() (A, B)`) are intentionally not
+adapts it. Variadic constructors are supported: `func NewThing(opts ...string)`
+is resolved from a `[]string` provider and called as `NewThing(opts...)`.
+Multi-value providers (`func() (A, B)`) are intentionally not
 supported — split them into two providers.
 
 Register a provider with:

@@ -164,7 +164,7 @@ func NewThing(...) (T, Cleanup)          // Cleanup = func(context.Context) erro
 func NewThing(...) (T, Cleanup, error)
 ```
 
-`Cleanup` 也可以是 `func()`、`func() error` 或 `func(context.Context)`；Loom 会适配它。刻意不支持多值 provider（如 `func() (A, B)`），请将其拆成两个 provider。
+`Cleanup` 也可以是 `func()`、`func() error` 或 `func(context.Context)`；Loom 会适配它。支持变参构造器：`func NewThing(opts ...string)` 会从 `[]string` provider 取值，并生成 `NewThing(opts...)` 调用。刻意不支持多值 provider（如 `func() (A, B)`），请将其拆成两个 provider。
 
 注册 provider：
 

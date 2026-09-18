@@ -65,7 +65,7 @@ func NewThing(...) (T, loom.Cleanup)
 func NewThing(...) (T, loom.Cleanup, error)
 ```
 
-Cleanup can also be `func()`, `func() error`, or `func(context.Context)`. Split multi-value results such as `(A, B)` into separate constructors.
+Cleanup can also be `func()`, `func() error`, or `func(context.Context)`. Variadic constructors take a slice dependency: `func NewThing(opts ...string)` is resolved from a `[]string` provider and called with `opts...`. Split multi-value results such as `(A, B)` into separate constructors.
 
 `loom.As[I](NewC)` replaces—not supplements—`loom.Provide(NewC)`: it makes both `*C` and `I` available from the same instance. Do not list both, or Loom reports a duplicate provider.
 

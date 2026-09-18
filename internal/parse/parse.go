@@ -105,6 +105,12 @@ type parseState struct {
 	explicitName string
 	withCtx      bool
 	moduleStack  []string
+	// declSite is the position of the declaration whose argument list is
+	// currently being walked: the loom.Graph call, a named module's
+	// loom.Module call, or an inline loom.Module call. Providers record it so
+	// that a graph-level binding can be told apart from a redundant repeat in
+	// the same provider set.
+	declSite token.Pos
 }
 
 func (p *Parser) graph(pkg *packages.Package, varName string, call *ast.CallExpr) (*model.Graph, error) {
@@ -123,7 +129,7 @@ func (p *Parser) graph(pkg *packages.Package, varName string, call *ast.CallExpr
 		Pos:     pkg.Fset.Position(call.Pos()),
 	}
 
-	st := &parseState{seenModules: map[*types.Var]bool{}}
+	st := &parseState{seenModules: map[*types.Var]bool{}, declSite: call.Pos()}
 	if err := p.options(g, st, pkg, call.Args); err != nil {
 		return nil, err
 	}
@@ -178,7 +184,10 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 				return err
 			}
 			st.moduleStack = append(st.moduleStack, moduleName(v))
+			savedSite := st.declSite
+			st.declSite = call.Pos()
 			err = p.options(g, st, mpkg, call.Args)
+			st.declSite = savedSite
 			st.moduleStack = st.moduleStack[:len(st.moduleStack)-1]
 			if err != nil {
 				return err
@@ -216,7 +225,13 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 			}
 			p.addProvider(g, st, pr)
 		case fn.Name() == "Module":
-			if err := p.options(g, st, pkg, call.Args); err != nil {
+			// An inline module is its own declaration: a graph may add a binding
+			// to a constructor an inline module provides.
+			savedSite := st.declSite
+			st.declSite = call.Pos()
+			err := p.options(g, st, pkg, call.Args)
+			st.declSite = savedSite
+			if err != nil {
 				return err
 			}
 		case fn.Name() == "Name":
@@ -238,6 +253,7 @@ func (p *Parser) options(g *model.Graph, st *parseState, pkg *packages.Package, 
 // required because the parser reuses one stack while recursively expanding.
 func (p *Parser) addProvider(g *model.Graph, st *parseState, pr *model.Provider) {
 	pr.Modules = append([]string(nil), st.moduleStack...)
+	pr.DeclSite = st.declSite
 	g.Providers = append(g.Providers, pr)
 }
 
@@ -324,17 +340,13 @@ func (p *Parser) constructor(pkg *packages.Package, ctor ast.Expr) (*model.Provi
 		TypeArgs: typeArgsOf(info, ctor),
 	}
 
+	// A variadic constructor's final parameter is a slice type in go/types;
+	// generated code passes the slice and spreads it with "...".
 	params := sig.Params()
 	for i := 0; i < params.Len(); i++ {
-		t := params.At(i).Type()
-		if sig.Variadic() && i == params.Len()-1 {
-			if slice, ok := t.(*types.Slice); ok {
-				t = slice.Elem()
-				pr.Variadic = true
-			}
-		}
-		pr.Inputs = append(pr.Inputs, t)
+		pr.Inputs = append(pr.Inputs, params.At(i).Type())
 	}
+	pr.Variadic = sig.Variadic()
 
 	res := sig.Results()
 	if res.Len() == 0 {
@@ -390,8 +402,14 @@ func (p *Parser) constructorRef(pkg *packages.Package, ctor ast.Expr) (types.Obj
 		return nil, p.errf(pkg, ctor.Pos(),
 			"provider %s is not a reference to a package-level function", describeExpr(ctor))
 	}
-	switch obj.(type) {
+	switch obj := obj.(type) {
 	case *types.Func:
+		// A method has a receiver, and the generated code would emit the bare
+		// method name as a call, which does not compile. Reject it here instead.
+		if sig, _ := obj.Type().(*types.Signature); sig != nil && sig.Recv() != nil {
+			return nil, p.errf(pkg, ctor.Pos(),
+				"provider %s is a method; loom requires a package-level function", describeExpr(ctor))
+		}
 	case *types.Var:
 		if obj.Parent() != obj.Pkg().Scope() {
 			return nil, p.errf(pkg, ctor.Pos(),
@@ -477,16 +495,21 @@ func (p *Parser) checkProviders(g *model.Graph) error {
 //
 // The two entries must come from different declarations. Listing one
 // constructor twice in the same provider set stays an error, because that is
-// the redundancy the diagnostic explains.
+// the redundancy the diagnostic explains; a graph-level binding of a
+// module-provided constructor is not an error, even when the module and the
+// graph are written in the same file.
 func (p *Parser) extends(existing, pr *model.Provider, index model.Index) bool {
-	if len(pr.Bindings) == 0 {
-		return false
-	}
 	if existing.RefObj == nil || existing.RefObj != pr.RefObj || !model.SameTypeArgs(existing, pr) {
 		return false
 	}
-	if existing.Pos.Filename == pr.Pos.Filename {
+	if existing.DeclSite == pr.DeclSite {
 		return false
+	}
+	if len(pr.Bindings) == 0 {
+		// A plain provider repeated in another declaration is redundant only
+		// when the existing entry already exposes an interface; otherwise the
+		// two entries genuinely provide the same type twice and stay an error.
+		return len(existing.Bindings) > 0
 	}
 	for _, b := range pr.Bindings {
 		if model.HasBinding(existing, b) {
@@ -701,13 +724,19 @@ func describeExpr(e ast.Expr) string {
 	case *ast.Ident:
 		return v.Name
 	case *ast.SelectorExpr:
-		return describeExpr(v.X) + "." + v.Sel.Name
+		x := describeExpr(v.X)
+		if _, ok := unparen(v.X).(*ast.StarExpr); ok {
+			x = "(" + x + ")"
+		}
+		return x + "." + v.Sel.Name
 	case *ast.CallExpr:
 		return describeExpr(v.Fun) + "(...)"
 	case *ast.IndexExpr:
 		return describeExpr(v.X) + "[...]"
 	case *ast.IndexListExpr:
 		return describeExpr(v.X) + "[...]"
+	case *ast.StarExpr:
+		return "*" + describeExpr(v.X)
 	case *ast.CompositeLit:
 		return "composite literal"
 	default:

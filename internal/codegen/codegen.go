@@ -394,6 +394,9 @@ func (w *graphWriter) emitStep(s *resolve.Step) error {
 	for i, d := range s.Deps {
 		args[i] = w.varOf(d)
 	}
+	if p.Variadic && len(args) > 0 {
+		args[len(args)-1] += "..."
+	}
 	name := w.varOf(s)
 
 	switch p.Kind {

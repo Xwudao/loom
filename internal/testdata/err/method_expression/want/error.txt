@@ -1,0 +1,3 @@
+loom: provider (*Factory).NewConfig is a method; loom requires a package-level function
+at:
+    internal/testdata/err/method_expression/app.go:23:15
