@@ -204,6 +204,36 @@ func TestLifecycleContextCancellation(t *testing.T) {
 	}
 }
 
+func TestLifecycleCanceledStopStillRunsCleanups(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), "key", "value"))
+	var cleanups, stops int
+	lc := loom.NewLifecycle()
+	lc.AddCleanup(func(ctx context.Context) error {
+		cleanups++
+		if ctx.Err() != nil || ctx.Value("key") != "value" {
+			t.Errorf("cleanup context: err=%v, value=%v", ctx.Err(), ctx.Value("key"))
+		}
+		return nil
+	})
+	lc.Append(loom.Hook{OnStop: func(context.Context) error { stops++; return nil }})
+	lc.AddCleanup(func(context.Context) error { cancel(); cleanups++; return nil })
+	if err := lc.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := lc.Stop(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Stop = %v, want context.Canceled", err)
+	}
+	if cleanups != 2 || stops != 0 {
+		t.Fatalf("cleanups=%d stops=%d, want 2 and 0", cleanups, stops)
+	}
+	if err := lc.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cleanups != 2 {
+		t.Fatalf("cleanup ran twice: %d", cleanups)
+	}
+}
+
 func TestLifecyclePanicBecomesError(t *testing.T) {
 	lc := loom.NewLifecycle()
 	lc.Append(loom.Hook{OnStart: func(context.Context) error { panic("kaboom") }})

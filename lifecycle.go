@@ -239,8 +239,8 @@ func (l *Lifecycle) rewindStarted(n int) {
 //
 // Errors from individual hooks are aggregated with errors.Join so that one
 // failing hook does not prevent the rest of the shutdown. If ctx is canceled
-// mid-shutdown, Stop records ctx.Err() and stops running further entries.
-//
+// mid-shutdown, Stop records ctx.Err() and skips remaining stop hooks, but
+// still runs constructor cleanups with cancellation detached to avoid leaks.
 // Stop is idempotent: calling it again after the lifecycle has stopped returns
 // nil.
 func (l *Lifecycle) Stop(ctx context.Context) error {
@@ -304,10 +304,11 @@ func (l *Lifecycle) stop(ctx context.Context) error {
 	l.mu.Unlock()
 
 	var errs []error
+	canceled := false
 	for i := n - 1; i >= 0; i-- {
-		if err := ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil && !canceled {
 			errs = append(errs, err)
-			break
+			canceled = true
 		}
 
 		l.mu.Lock()
@@ -320,13 +321,15 @@ func (l *Lifecycle) stop(ctx context.Context) error {
 			}
 			l.entries[i].done = true
 			l.mu.Unlock()
-			if err := callHook("Cleanup", ctx, e.cleanup); err != nil {
+			// A canceled shutdown must still release acquired resources. Preserve
+			// context values while detaching cancellation from cleanup callbacks.
+			if err := callHook("Cleanup", context.WithoutCancel(ctx), e.cleanup); err != nil {
 				errs = append(errs, err)
 			}
 			continue
 		}
 		l.mu.Unlock()
-		if started && e.hook.OnStop != nil {
+		if !canceled && started && e.hook.OnStop != nil {
 			if err := callHook("OnStop", ctx, e.hook.OnStop); err != nil {
 				errs = append(errs, err)
 			}

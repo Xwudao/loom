@@ -221,12 +221,39 @@ func commit(res *Result, dryRun bool) error {
 		res.Changed = true
 		return nil
 	default:
-		if err := os.WriteFile(res.File, res.Source, 0o644); err != nil {
+		if err := writeAtomic(res.File, res.Source); err != nil {
 			return fmt.Errorf("loom: writing %s: %w", res.File, err)
 		}
 		res.Changed = true
 		return nil
 	}
+}
+
+// writeAtomic keeps the previous generated file intact if writing fails.
+// The temporary file must be in the destination directory for rename to be
+// atomic on the same filesystem.
+func writeAtomic(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".loom-gen-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // checkNames rejects two graphs that would generate the same function, and

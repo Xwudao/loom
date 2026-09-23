@@ -9,6 +9,7 @@ package load
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"path/filepath"
@@ -103,8 +104,8 @@ type Generated struct {
 	// local maps a package path to the initializer names generated in it, for
 	// references written without a qualifier.
 	local map[string]map[string]bool
-	// qualified maps a package name to the initializer names generated in it,
-	// for references written as pkg.Func from a dependent package.
+	// qualified maps an import path to initializer names generated in it.
+	// The spelling of an import qualifier alone does not identify a package.
 	qualified map[string]map[string]bool
 	// packages records the package paths whose generated file Loom is about to
 	// rewrite.
@@ -130,25 +131,54 @@ func (g *Generated) Add(pkg *packages.Package, name string) {
 		g.local[pkg.PkgPath] = map[string]bool{}
 	}
 	g.local[pkg.PkgPath][name] = true
-	if pkg.Name != "" {
-		if g.qualified[pkg.Name] == nil {
-			g.qualified[pkg.Name] = map[string]bool{}
-		}
-		g.qualified[pkg.Name][name] = true
+	if g.qualified[pkg.PkgPath] == nil {
+		g.qualified[pkg.PkgPath] = map[string]bool{}
 	}
+	g.qualified[pkg.PkgPath][name] = true
 }
 
 // ignores reports whether msg is an "undefined" error in pkg that refers to a
 // function Loom is about to generate.
-func (g *Generated) ignores(pkg *packages.Package, msg string) bool {
-	ref, ok := undefinedRef(msg)
+func (g *Generated) ignores(pkg *packages.Package, e packages.Error) bool {
+	ref, ok := undefinedRef(e.Msg)
 	if !ok {
 		return false
 	}
 	if qual, ident, found := strings.Cut(ref, "."); found {
-		return g.qualified[qual][ident]
+		// Resolve the actual import at the error site. Different packages can
+		// share a name (and imports can be aliased), so the qualifier alone is
+		// not sufficient evidence that this is a generated function.
+		for _, file := range pkg.Syntax {
+			found := false
+			ast.Inspect(file, func(n ast.Node) bool {
+				if found {
+					return false
+				}
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != ident {
+					return true
+				}
+				x, ok := sel.X.(*ast.Ident)
+				if !ok || x.Name != qual ||
+					(!samePos(pkg.Fset.Position(x.Pos()), e.Pos) && !samePos(pkg.Fset.Position(sel.Sel.Pos()), e.Pos)) {
+					return true
+				}
+				importName, ok := pkg.TypesInfo.Uses[x].(*types.PkgName)
+				found = ok && g.qualified[importName.Imported().Path()][ident]
+				return false
+			})
+			if found {
+				return true
+			}
+		}
+		return false
 	}
 	return g.local[pkg.PkgPath][ref]
+}
+
+// samePos checks the location of the qualifier in a go/packages diagnostic.
+func samePos(p token.Position, pos string) bool {
+	return fmt.Sprintf("%s:%d:%d", p.Filename, p.Line, p.Column) == pos
 }
 
 // undefinedRef extracts the identifier from an "undefined: X" error message.
@@ -251,7 +281,7 @@ func (l *Loader) CheckErrors(gen *Generated) error {
 				continue // reported by Load
 			}
 			if gen != nil {
-				if gen.ignores(p, e.Msg) || gen.ignoresStaleFile(p, e.Pos) {
+				if gen.ignores(p, e) || gen.ignoresStaleFile(p, e.Pos) {
 					continue
 				}
 			}
