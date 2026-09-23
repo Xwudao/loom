@@ -205,13 +205,14 @@ func TestLifecycleContextCancellation(t *testing.T) {
 }
 
 func TestLifecycleCanceledStopStillRunsCleanups(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), "key", "value"))
+	type contextKey struct{}
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), contextKey{}, "value"))
 	var cleanups, stops int
 	lc := loom.NewLifecycle()
 	lc.AddCleanup(func(ctx context.Context) error {
 		cleanups++
-		if ctx.Err() != nil || ctx.Value("key") != "value" {
-			t.Errorf("cleanup context: err=%v, value=%v", ctx.Err(), ctx.Value("key"))
+		if ctx.Err() != nil || ctx.Value(contextKey{}) != "value" {
+			t.Errorf("cleanup context: err=%v, value=%v", ctx.Err(), ctx.Value(contextKey{}))
 		}
 		return nil
 	})

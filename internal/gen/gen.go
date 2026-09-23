@@ -4,6 +4,7 @@ package gen
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -232,28 +233,40 @@ func commit(res *Result, dryRun bool) error {
 // writeAtomic keeps the previous generated file intact if writing fails.
 // The temporary file must be in the destination directory for rename to be
 // atomic on the same filesystem.
-func writeAtomic(path string, data []byte) error {
+func writeAtomic(path string, data []byte) (err error) {
 	f, err := os.CreateTemp(filepath.Dir(path), ".loom-gen-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	name := f.Name()
+	renamed := false
+	defer func() {
+		if f != nil {
+			err = errors.Join(err, f.Close())
+		}
+		if !renamed {
+			err = errors.Join(err, os.Remove(name))
+		}
+	}()
 	if err := f.Chmod(0o644); err != nil {
-		f.Close()
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
 		return err
 	}
-	if err := f.Close(); err != nil {
+	closeErr := f.Close()
+	f = nil
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Rename(name, path); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), path)
+	renamed = true
+	return nil
 }
 
 // checkNames rejects two graphs that would generate the same function, and
