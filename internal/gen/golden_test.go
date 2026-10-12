@@ -76,6 +76,34 @@ func TestGoldenGenerate(t *testing.T) {
 	}
 }
 
+// TestInterfaceInference confirms information is returned even when the file
+// is unchanged, while explicit bindings suppress the notice.
+func TestInterfaceInference(t *testing.T) {
+	root := repoRoot(t)
+	for _, tc := range []struct {
+		name     string
+		wantInfo bool
+	}{
+		{"auto_interface", true}, {"explicit_interface", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pattern := "./internal/testdata/gen/" + tc.name
+			for i := 0; i < 2; i++ {
+				results, err := gen.Run(gen.Options{Dir: root, Patterns: []string{pattern}, DryRun: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(results) != 1 || (len(results[0].Infos) > 0) != tc.wantInfo {
+					t.Fatalf("infos = %v, want info = %v", results, tc.wantInfo)
+				}
+				if tc.wantInfo && (!strings.Contains(results[0].Infos[0], "loom.As[Store](NewUserStore)") || !strings.Contains(results[0].Infos[0], "loom: info:")) {
+					t.Fatalf("unexpected info: %v", results[0].Infos)
+				}
+			}
+		})
+	}
+}
+
 // TestGoldenErrors compares diagnostics against checked-in golden files.
 func TestGoldenErrors(t *testing.T) {
 	root := repoRoot(t)

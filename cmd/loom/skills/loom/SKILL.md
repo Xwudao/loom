@@ -67,7 +67,7 @@ func NewThing(...) (T, loom.Cleanup, error)
 
 Cleanup can also be `func()`, `func() error`, or `func(context.Context)`. Variadic constructors take a slice dependency: `func NewThing(opts ...string)` is resolved from a `[]string` provider and called with `opts...`. Split multi-value results such as `(A, B)` into separate constructors.
 
-`loom.As[I](NewC)` replaces—not supplements—`loom.Provide(NewC)`: it makes both `*C` and `I` available from the same instance. Do not list both, or Loom reports a duplicate provider.
+`loom.As[I](NewC)` replaces—not supplements—`loom.Provide(NewC)`: it makes both `*C` and `I` available from the same instance. Do not list both, or Loom reports a duplicate provider. A single matching concrete provider can satisfy an unbound interface automatically, but generation prints an info notice; prefer `As` to make the choice explicit. Multiple matches require `As`.
 
 Use a module to share provider sets. Modules may nest, and including the same module more than once is a no-op.
 

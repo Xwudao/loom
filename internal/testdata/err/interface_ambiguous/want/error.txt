@@ -1,0 +1,7 @@
+loom: multiple providers found for Store
+providers:
+    internal/testdata/err/interface_ambiguous/app.go:18:15  NewFirst()
+    internal/testdata/err/interface_ambiguous/app.go:19:15  NewSecond()
+
+hint:
+    use loom.As[Store](constructor) to select the intended provider

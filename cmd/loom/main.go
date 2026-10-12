@@ -80,6 +80,9 @@ func generateCmd(args []string) error {
 	}
 	var stale []string
 	for _, r := range results {
+		for _, info := range r.Infos {
+			fmt.Fprintln(os.Stderr, info)
+		}
 		path := relPath(r.File)
 		switch {
 		case !r.Changed:

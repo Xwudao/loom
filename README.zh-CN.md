@@ -109,6 +109,8 @@ hint:
     loom.As[Store](NewStore) already provides both *store and Store; remove the separate loom.Provide(NewStore)
 ```
 
+**接口依赖可自动匹配唯一实现，但推荐显式绑定。** 当接口没有精确 provider 或 `As` 绑定，且图中只有一个 provider 的返回类型满足它时，生成器会自动使用该 provider，并在每次 `loom generate` 时输出 `loom: info` 提示（即使生成文件未变化）。若有多个候选则报歧义；用 `loom.As[I](NewC)` 明确指定实现，避免后来新增 provider 时改变图的含义。
+
 **没有 stub 文件。** Wire 将 injector 放在 `wireinject` 构建标签后，因此调用点只有在生成后才会通过类型检查。Loom 图是普通包级变量，gopls、`go vet` 和 `go test` 都能看到它。代价是首次运行时调用点引用的初始化函数尚不存在；`loom generate` 会识别它即将修复的 `undefined: InitApp` 错误，同时继续报告其他所有类型错误。
 
 ## 快速开始
@@ -365,24 +367,13 @@ InitApp  (examples/full/graph.go:22)
 
 ## 诊断信息
 
-缺失 provider、循环和重复项会报告完整路径：
+缺失 provider、循环和歧义会报告错误；自动匹配唯一接口实现时则输出 info：
 
 ```
-loom: cannot build *App
-
-dependency path:
-    *App
-      -> *UserService
-      -> UserStore  (missing)
-
-providers:
-    internal/app/app.go:14:6       NewApp(*UserService)
-    internal/user/service.go:13:6  NewUserService(UserStore)
-
-hint:
-    provider NewUserStore returns *userStore, which implements UserStore;
-    bind it with loom.As[UserStore](NewUserStore)
+loom: info: internal/app/app.go:14:15: InitApp implicitly uses NewUserStore for UserStore; prefer loom.As[UserStore](NewUserStore) for an explicit binding
 ```
+
+多个实现满足接口时，Loom 会列出候选 provider，并要求通过 `loom.As` 显式选择。
 
 ## Loom 不是什么
 

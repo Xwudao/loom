@@ -12,7 +12,7 @@ type userStore struct{}
 
 func (s *userStore) Get() User { return User{} }
 
-// NewUserStore provides the concrete type but is never bound to Store.
+// NewUserStore provides the concrete type, inferred for Store.
 func NewUserStore() *userStore { return &userStore{} }
 
 // Service depends on Store.
@@ -27,7 +27,7 @@ type App struct{ Service *Service }
 // NewApp builds the application.
 func NewApp(s *Service) *App { return &App{Service: s} }
 
-// AppGraph forgets loom.As[Store].
+// AppGraph relies on a unique interface implementation.
 var AppGraph = loom.Graph[*App](
 	loom.Provide(NewUserStore),
 	loom.Provide(NewService),

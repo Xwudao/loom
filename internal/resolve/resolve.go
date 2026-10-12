@@ -41,6 +41,8 @@ type Step struct {
 type Plan struct {
 	Graph *model.Graph
 	Root  *Step
+	// Inferred records interface dependencies resolved without an explicit binding.
+	Inferred []Inference
 	// Steps are ordered so that every dependency precedes its dependents.
 	Steps []*Step
 
@@ -76,6 +78,12 @@ func (p *Plan) HasError() bool {
 	return false
 }
 
+// Inference is an implicit interface binding chosen from a unique provider.
+type Inference struct {
+	Interface types.Type
+	Provider  *model.Provider
+}
+
 type frame struct {
 	typ      types.Type
 	provider *model.Provider
@@ -89,6 +97,7 @@ type builder struct {
 	context   types.Type
 
 	steps      []*Step
+	inferred   []Inference
 	byType     typeutil.Map
 	done       map[*model.Provider]*Step
 	inProgress map[*model.Provider]bool
@@ -117,7 +126,7 @@ func Build(g *model.Graph, lifecycle, contextType types.Type, base string) (*Pla
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{Graph: g, Root: root, Steps: b.steps, byType: b.byType}, nil
+	return &Plan{Graph: g, Root: root, Steps: b.steps, Inferred: b.inferred, byType: b.byType}, nil
 }
 
 func (b *builder) resolve(t types.Type, stack []frame) (*Step, error) {
@@ -145,6 +154,17 @@ func (b *builder) resolve(t types.Type, stack []frame) (*Step, error) {
 		return s, nil
 	}
 
+	inferred := false
+	if len(cands) == 0 && !(b.context != nil && types.Identical(t, b.context)) {
+		if _, ok := types.Unalias(t).Underlying().(*types.Interface); ok {
+			inferred = true
+			for _, p := range b.g.Providers {
+				if types.AssignableTo(p.Output, t) {
+					cands = append(cands, p)
+				}
+			}
+		}
+	}
 	switch len(cands) {
 	case 0:
 		return nil, b.missingError(t, stack, "")
@@ -153,6 +173,9 @@ func (b *builder) resolve(t types.Type, stack []frame) (*Step, error) {
 		return nil, b.duplicateError(t, cands)
 	}
 	pr := cands[0]
+	if inferred {
+		b.inferred = append(b.inferred, Inference{Interface: t, Provider: pr})
+	}
 
 	if s, ok := b.done[pr]; ok {
 		b.memoize(t, s)
@@ -213,30 +236,7 @@ func (b *builder) missingError(t types.Type, stack []frame, hint string) error {
 		Fmt:  f,
 		Hint: hint,
 	}
-	if hint == "" {
-		e.Hint = b.interfaceSuggestion(t)
-	}
 	return e
-}
-
-// interfaceSuggestion looks for a provider whose result implements t. Loom
-// requires explicit bindings, so this turns a bare "no provider" error into an
-// actionable one.
-func (b *builder) interfaceSuggestion(t types.Type) string {
-	if _, ok := types.Unalias(t).Underlying().(*types.Interface); !ok {
-		return ""
-	}
-	f := b.fmt()
-	for _, p := range b.g.Providers {
-		if types.Identical(p.Output, t) || len(p.Bindings) > 0 {
-			continue
-		}
-		if types.AssignableTo(p.Output, t) {
-			return "provider " + p.Name + " returns " + f.Type(p.Output) +
-				", which implements " + f.Type(t) + "; bind it with loom.As[" + f.Type(t) + "](" + p.Name + ")"
-		}
-	}
-	return ""
 }
 
 func (b *builder) cycleError(t types.Type, stack []frame) error {
@@ -270,10 +270,16 @@ func (b *builder) cycleError(t types.Type, stack []frame) error {
 
 func (b *builder) duplicateError(t types.Type, cands []*model.Provider) error {
 	f := b.fmt()
+	providers := make([]diag.Frame, 0, len(cands))
+	for _, p := range cands {
+		providers = append(providers, diag.Frame{
+			Type: t, Label: diag.ProviderLabel(p.Name, p.Inputs, f) + p.ModuleSuffix(), Pos: p.Pos,
+		})
+	}
 	return &diag.Error{
-		Msg:  "multiple providers found for " + f.Type(t),
-		Pos:  cands[1].Pos,
-		Fmt:  f,
-		Hint: model.SameConstructorHint(cands, f.Type),
+		Msg:       "multiple providers found for " + f.Type(t),
+		Providers: providers,
+		Fmt:       f,
+		Hint:      "use loom.As[" + f.Type(t) + "](constructor) to select the intended provider",
 	}
 }

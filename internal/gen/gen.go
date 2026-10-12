@@ -37,6 +37,8 @@ type Result struct {
 	Package string
 	File    string
 	Graphs  []string
+	// Infos describes implicit interface bindings; display on every generate run.
+	Infos   []string
 	Changed bool
 	Source  []byte
 }
@@ -187,10 +189,17 @@ func (s *session) render(u unit, base string) (*Result, error) {
 
 	file := codegen.NewFile(root, s.fileOpts, "")
 	names := make([]string, 0, len(graphs))
+	var infos []string
+	formatter := diag.Formatter{Current: root.Types, Base: base}
 	for _, g := range graphs {
 		plan, err := resolve.Build(g, s.parser.LifecycleType(), s.parser.ContextType(), base)
 		if err != nil {
 			return nil, err
+		}
+		for _, inferred := range plan.Inferred {
+			p := inferred.Provider
+			infos = append(infos, fmt.Sprintf("loom: info: %s: %s implicitly uses %s for %s; prefer loom.As[%s](%s) for an explicit binding",
+				formatter.Pos(p.Pos), g.Name, p.Name, formatter.Type(inferred.Interface), formatter.Type(inferred.Interface), p.Name))
 		}
 		if err := file.AddGraph(g, plan); err != nil {
 			return nil, err
@@ -205,6 +214,7 @@ func (s *session) render(u unit, base string) (*Result, error) {
 		Package: root.PkgPath,
 		File:    filepath.Join(dir, load.GeneratedFile),
 		Graphs:  names,
+		Infos:   infos,
 		Source:  src,
 	}, nil
 }

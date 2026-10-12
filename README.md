@@ -116,6 +116,8 @@ hint:
     loom.As[Store](NewStore) already provides both *store and Store; remove the separate loom.Provide(NewStore)
 ```
 
+**A unique interface implementation can be inferred, but explicit binding is recommended.** If an interface dependency has no exact provider or `As` binding and exactly one provider returns an assignable type, Loom uses it and prints a `loom: info` message on every `loom generate` run (even if the output is unchanged). Multiple candidates are an error. Prefer `loom.As[I](NewC)` to make the choice explicit and stable as the graph grows.
+
 **There is no stub file.** Wire kept its injectors behind a `wireinject` build
 tag, so the call site only type-checked after generation. A Loom graph is an
 ordinary package-level variable: gopls, `go vet` and `go test` all see it. The
@@ -419,24 +421,13 @@ InitApp  (examples/full/graph.go:22)
 
 ## Diagnostics
 
-Missing providers, cycles, and duplicates report the whole path:
+Missing providers, cycles, and ambiguous implementations are errors. A unique inferred interface binding prints an info notice instead:
 
 ```
-loom: cannot build *App
-
-dependency path:
-    *App
-      -> *UserService
-      -> UserStore  (missing)
-
-providers:
-    internal/app/app.go:14:6       NewApp(*UserService)
-    internal/user/service.go:13:6  NewUserService(UserStore)
-
-hint:
-    provider NewUserStore returns *userStore, which implements UserStore;
-    bind it with loom.As[UserStore](NewUserStore)
+loom: info: internal/app/app.go:14:15: InitApp implicitly uses NewUserStore for UserStore; prefer loom.As[UserStore](NewUserStore) for an explicit binding
 ```
+
+When multiple providers satisfy an interface, Loom lists the candidates and requires `loom.As` to select one.
 
 ## What Loom is not
 
